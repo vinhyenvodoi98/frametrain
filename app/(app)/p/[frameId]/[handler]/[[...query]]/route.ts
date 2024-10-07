@@ -79,25 +79,30 @@ export async function POST(
             }
         )
     }
+    let renderedFrame;
 
-    const renderedFrame = await buildPreviewFramePage({
-        id: frame.id,
-        buttons: buildParameters.buttons,
-        aspectRatio: buildParameters.aspectRatio,
-        inputText: buildParameters.inputText,
-        refreshPeriod: buildParameters.refreshPeriod,
-        params: buildParameters.params,
-        fonts: buildParameters.fonts,
-        component: buildParameters.component,
-        image: buildParameters.image,
-        handler: buildParameters.handler,
-    })
+    if (buildParameters.component) {
+        renderedFrame = await buildPreviewFramePage({
+            id: frame.id,
+            buttons: buildParameters.buttons,
+            aspectRatio: buildParameters.aspectRatio,
+            inputText: buildParameters.inputText,
+            refreshPeriod: buildParameters.refreshPeriod,
+            params: buildParameters.params,
+            fonts: buildParameters.fonts,
+            component: buildParameters.component,
+            image: buildParameters.image,
+            handler: buildParameters.handler,
+        })
 
-    if (
-        frame.updatedAt.getTime() < Date.now() - ms('5m') ||
-        frame.updatedAt.getTime() === frame.createdAt.getTime()
-    ) {
-        await updateFramePreview(frame.id, renderedFrame)
+        if (
+            frame.updatedAt.getTime() < Date.now() - ms('5m') ||
+            frame.updatedAt.getTime() === frame.createdAt.getTime()
+        ) {
+            await updateFramePreview(frame.id, renderedFrame)
+        }
+    } else {
+        renderedFrame = JSON.stringify(buildParameters)
     }
 
     return new Response(renderedFrame, {
@@ -105,50 +110,4 @@ export async function POST(
             'Content-Type': 'text/html',
         },
     })
-}
-
-export async function GET(request: NextRequest,
-    { params }: { params: { frameId: string; handler: string } }
-) {
-    const searchParams: Record<string, string> = {}
-
-    request.nextUrl.searchParams.forEach((value, key) => {
-        if (!['frameId', 'handler'].includes(key)) {
-            searchParams[key] = value
-        }
-    })
-
-    const frame = await client
-        .select()
-        .from(frameTable)
-        .where(eq(frameTable.id, params.frameId))
-        .get()
-
-    if (!frame) {
-        notFound()
-    }
-
-    if (!frame.draftConfig) {
-        notFound()
-    }
-
-    const template = templates[frame.template]
-
-    const handlerFn = template.handlers[params.handler as keyof ValidHandler]
-
-    if (!handlerFn) {
-        notFound()
-    }
-
-    const { transaction } = await handlerFn({
-        config: frame.draftConfig as BaseConfig,
-        params: searchParams,
-    })
-
-    return Response.json(
-        { transaction },
-        {
-            status: 200,
-        }
-    )
 }
